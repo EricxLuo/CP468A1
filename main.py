@@ -6,11 +6,13 @@ W_PARKING_COST = 2.0
 W_WALK_TIME = 1.5    
 
 class DynamicParkingAgent:
-    def __init__(self, road_graph, parking_lots, destination, node_coords):
+    # 1. Added max_walk_dist with a default of infinity so it won't break if omitted
+    def __init__(self, road_graph, parking_lots, destination, node_coords, max_walk_dist=float('inf')):
         self.road_graph = road_graph       
         self.parking_lots = parking_lots   
         self.destination = destination     
         self.node_coords = node_coords     
+        self.max_walk_dist = max_walk_dist # Store the distance constraint
 
     def heuristic(self, current_node, mode):
         # Distance estimate
@@ -37,9 +39,12 @@ class DynamicParkingAgent:
         visited = set()
         
         print(f"Starting Search from {start_node} to {self.destination}...\n")
+        print(f"Max Walking Distance Enforced: {self.max_walk_dist} units\n")
 
         while pq:
-            f_score, g_score, current_v, mode, p_star, path = heapq.heappop(pq)
+            # Pop the current best state
+            state = heapq.heappop(pq)
+            f_score, g_score, current_v, mode, p_star, path = state
 
             state_key = (current_v, mode, p_star)
             if state_key in visited:
@@ -67,10 +72,16 @@ class DynamicParkingAgent:
                                         path + [f"Drive to {neighbor}"]))
                 
                 # Action 2: Park the car
-                # Only works if we are at a lot and it has space
                 if current_v in self.parking_lots:
                     lot_info = self.parking_lots[current_v]
-                    if lot_info['capacity'] > 0: 
+                    
+                    # 2. Calculate actual walking distance to destination
+                    p_x, p_y = self.node_coords[current_v]
+                    d_x, d_y = self.node_coords[self.destination]
+                    walk_dist = ((p_x - d_x)**2 + (p_y - d_y)**2)**0.5
+                    
+                    # 3. Only allow parking if it has space AND is within walking limits
+                    if lot_info['capacity'] > 0 and walk_dist <= self.max_walk_dist: 
                         new_g = g_score + (lot_info['price'] * W_PARKING_COST)
                         f_new = new_g + self.heuristic(current_v, 'PARKED')
                         
@@ -113,6 +124,8 @@ parking_data = {
     'Park2': {'price': 5, 'capacity': 5}
 }
 
-# Execution
-agent = DynamicParkingAgent(urban_map, parking_data, 'Destination', coordinates)
+# Execution with a 3.0 distance limit
+# Park2 is ~5.1 units away from destination, so it will be rejected despite being cheaper!
+# Park1 is ~1.4 units away, so it will be accepted.
+agent = DynamicParkingAgent(urban_map, parking_data, 'Destination', coordinates, max_walk_dist=3.0)
 agent.solve('Start')
